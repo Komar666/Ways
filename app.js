@@ -19,17 +19,57 @@ const ENTRANCE = POI.vhod.at; // [x,y] — все маршруты старту�
   PLANMAP.loop[bi] = [ENTRANCE[0], ENTRANCE[1]];
 })();
 
-/* трек маршрута: один и тот же реальный контур из PDF для всех маршрутов —
-   без «фейкового» сжатия под размер. Раньше кольца сжимались к разной степени
-   (route.shrink), из-за чего одна и та же реальная точка (Гоголь, Ротонда и т.п.)
-   оказывалась в разных местах на разных маршрутах — сжатие сильнее всего сдвигало
-   именно удалённые от входа точки. Реальной отдельной геометрии для каждого из
-   3 маршрутов в исходниках нет, поэтому честнее показывать один и тот же трек
-   (различие — в цвете и наборе станций), чем имитировать разные контуры. */
-function scaledLoop(){
-  return PLANMAP.loop;
+/* Предвычисленный трек: плотный массив точек кривой + накопленная длина
+   вдоль неё. Строится ОДИН раз при загрузке страницы. Вся геометрия
+   маршрутов (расстояния, ближайшая точка, точка на заданной длине) считается
+   по этому массиву чистой математикой — без обращений к SVG DOM
+   (path.getPointAtLength в цикле по тысяче раз на клик — вот что раньше
+   тормозило открытие карточек маршрутов). */
+function catmullPts(loop, samp){
+  const m = loop.length, out = [];
+  for(let i=0;i<m;i++){
+    const p0=loop[(i-1+m)%m], p1=loop[i], p2=loop[(i+1)%m], p3=loop[(i+2)%m];
+    for(let t=0;t<samp;t++){
+      const tt = t/samp;
+      const cr = (a,b,c,e) => 0.5*((2*b)+(-a+c)*tt+(2*a-5*b+4*c-e)*tt*tt+(-a+3*b-3*c+e)*tt*tt*tt);
+      out.push([cr(p0[0],p1[0],p2[0],p3[0]), cr(p0[1],p1[1],p2[1],p3[1])]);
+    }
+  }
+  out.push(out[0]);
+  return out;
 }
-/* замкнутый сглаженный путь (Catmull-Rom → cubic bezier) */
+const TRAIL = (function(){
+  const pts = catmullPts(PLANMAP.loop, 24);
+  const cum = [0];
+  for(let i=1;i<pts.length;i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  return { pts, cum, L: cum[cum.length-1] };
+})();
+
+/* ближайшая длина вдоль трека к точке p (линейный поиск по кэшу — быстро) */
+function nearestLen(p){
+  let best = 0, bestD = Infinity;
+  for(let i=0;i<TRAIL.pts.length;i++){
+    const dx = TRAIL.pts[i][0]-p[0], dy = TRAIL.pts[i][1]-p[1];
+    const d = dx*dx+dy*dy;
+    if(d < bestD){ bestD = d; best = TRAIL.cum[i]; }
+  }
+  return best;
+}
+/* точка на треке на заданной длине (по модулю L), бинарный поиск по кэшу */
+function pointAtLength(len){
+  const L = TRAIL.L;
+  len = ((len % L) + L) % L;
+  let lo=0, hi=TRAIL.cum.length-1;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(TRAIL.cum[mid]<len) lo=mid+1; else hi=mid; }
+  const k = Math.max(1, lo);
+  const a = TRAIL.pts[k-1], b = TRAIL.pts[k];
+  const segLen = (TRAIL.cum[k]-TRAIL.cum[k-1]) || 1;
+  const f = (len - TRAIL.cum[k-1]) / segLen;
+  return { x: a[0]+(b[0]-a[0])*f, y: a[1]+(b[1]-a[1])*f };
+}
+
+/* замкнутый сглаженный путь (Catmull-Rom → cubic bezier) — только для
+   отрисовки (мини-карты маршрутов), геометрию по нему больше не считаем */
 function closedSmoothPath(pts){
   const n = pts.length; if(n<3) return '';
   let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
@@ -41,7 +81,8 @@ function closedSmoothPath(pts){
   }
   return d+' Z';
 }
-function routeTrackD(){ return closedSmoothPath(scaledLoop()); }
+const FULL_LOOP_D = closedSmoothPath(PLANMAP.loop); // не меняется — считаем один раз
+function routeTrackD(){ return FULL_LOOP_D; }
 
 let activeRoute = null;
 let state = { filter:'all', sort:'n' };
@@ -144,27 +185,19 @@ function drawRoute(route){
   const layer = $('#routeLayer');
   layer.innerHTML = '';
 
-  // скрытая опорная линия — весь реальный трек из PDF, нужна только чтобы
-  // считать по ней длины/точки (getPointAtLength). На экране не видна.
-  const ref = document.createElementNS(SVGNS,'path');
-  ref.setAttribute('d', routeTrackD());
-  ref.setAttribute('fill','none');
-  ref.setAttribute('stroke','none');
-  layer.appendChild(ref);
-
-  const L = ref.getTotalLength();
+  const L = TRAIL.L;
   const n = route.pois.length;
   const R = 27, IC = 22, OFF = 60;
 
   // реальная позиция каждой станции: якоря по координатам POI.at + интерполяция между ними
-  const arcs = stationArcs(route, ref);
+  const arcs = stationArcs(route);
 
   // видимая линия маршрута: идёт СТРОГО по порядку 1→2→3→...→N вдоль реальных
   // дорожек (не общий контур парка целиком, а только те его куски, которые
   // реально пройдены в этой последовательности — включая повторные проходы,
   // если маршрут возвращается через уже пройденное место)
   const line = document.createElementNS(SVGNS,'path');
-  line.setAttribute('d', buildSequenceLine(ref, arcs, L));
+  line.setAttribute('d', buildSequenceLine(arcs));
   line.setAttribute('class','rt-line');
   line.setAttribute('stroke', route.color);
   line.setAttribute('stroke-width','13');
@@ -180,7 +213,7 @@ function drawRoute(route){
     {t:0.16, type:'rest'}, {t:0.46, type:'pulse'}, {t:0.74, type:'rest'}, {t:0.90, type:'rest'}
   ].slice(0, route.rest>=6?4:3);
   icons.forEach(ic=>{
-    const P = normalPoint(ref, at(ic.t), OFF);
+    const P = normalPoint(at(ic.t), OFF);
     const g = document.createElementNS(SVGNS,'g');
     g.setAttribute('class','rt-icon '+(ic.type==='pulse'?'pulse':''));
     g.innerHTML = `<circle cx="${P.x}" cy="${P.y}" r="${IC}"/>`;
@@ -205,7 +238,7 @@ function drawRoute(route){
   const SPUR_MIN = 55; // px — от такого расстояния считаем, что точка не на трассе
   const placed = [];
   for(let i=0;i<n;i++){
-    const trailPt = ref.getPointAtLength(((arcs[i]%L)+L)%L);
+    const trailPt = pointAtLength(arcs[i]);
     const pid = route.pois[i];
     const poi = POI[pid];
     const confirmed = !!poi.at;
@@ -218,7 +251,7 @@ function drawRoute(route){
     }
     let tries = 0;
     while(placed.some(q => Math.hypot(q.x-pt.x, q.y-pt.y) < R*1.7) && tries<6){
-      const nb = normalPoint(ref, arcs[i], R*1.8*(tries+1));
+      const nb = normalPoint(arcs[i], R*1.8*(tries+1));
       pt = spurFrom ? { x: pt.x + (nb.x-trailPt.x)*0.4, y: pt.y + (nb.y-trailPt.y)*0.4 } : { x: nb.x, y: nb.y };
       tries++;
     }
@@ -246,7 +279,7 @@ function drawRoute(route){
   }
 
   // «вы здесь»
-  const here = ref.getPointAtLength(((at(0.22)%L)+L)%L);
+  const here = pointAtLength(at(0.22));
   const hg = document.createElementNS(SVGNS,'g');
   hg.setAttribute('class','rt-here');
   hg.innerHTML = `<circle class="pulsering" cx="${here.x}" cy="${here.y}" r="20" style="transform-origin:${here.x}px ${here.y}px"/>
@@ -256,20 +289,16 @@ function drawRoute(route){
 
 /* Строит путь, который проходит РЕАЛЬНЫЕ дорожки между станциями строго по
    порядку 1→2→3→...→N (а не общий контур парка целиком) — берём отрезки
-   опорной линии между соседними станциями, сэмплируя её через каждые ~40px. */
-function buildSequenceLine(ref, arcs, L){
+   трека между соседними станциями, сэмплируя его через каждые ~40px. */
+function buildSequenceLine(arcs){
   const pts = [];
   for(let i=0;i<arcs.length-1;i++){
     const a = arcs[i], b = arcs[i+1];
     const dist = Math.max(0, b-a);
     const steps = Math.max(1, Math.round(dist/40));
-    for(let s=0;s<steps;s++){
-      const len = a + dist*(s/steps);
-      pts.push(ref.getPointAtLength(((len%L)+L)%L));
-    }
+    for(let s=0;s<steps;s++) pts.push(pointAtLength(a + dist*(s/steps)));
   }
-  const lastLen = ((arcs[arcs.length-1]%L)+L)%L;
-  pts.push(ref.getPointAtLength(lastLen));
+  pts.push(pointAtLength(arcs[arcs.length-1]));
   let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
   for(let k=1;k<pts.length;k++) d += ` L${pts[k].x.toFixed(1)},${pts[k].y.toFixed(1)}`;
   return d;
@@ -279,8 +308,8 @@ function buildSequenceLine(ref, arcs, L){
    ставятся ровно на неё (одна и та же точка — всегда в одном и том же месте
    на любом маршруте), остальные — равномерно интерполируются между соседними
    станциями-«якорями» по порядку следования, а не по доле всего кольца. */
-function stationArcs(route, line){
-  const L = line.getTotalLength();
+function stationArcs(route){
+  const L = TRAIL.L;
   const n = route.pois.length;
   const arcs = new Array(n).fill(null);
   const BACK_TOL = 0.08*L; // маленький локальный откат назад (напр. мостик у пруда,
@@ -291,7 +320,7 @@ function stationArcs(route, line){
   for(let i=0;i<n;i++){
     const p = POI[route.pois[i]];
     if(!p.at) continue;
-    const raw = nearestLen(line, p.at);
+    const raw = nearestLen(p.at);
     if(anchoredIdx.length===0){
       arcs[i] = raw;
     } else {
@@ -333,38 +362,15 @@ function stationArcs(route, line){
   return arcs;
 }
 
-/* длина вдоль пути до точки, ближайшей к координате p */
-function nearestLen(path, p){
-  const L = path.getTotalLength();
-  let best = 0, bestD = Infinity;
-  const coarse = L/300;
-  for(let s=0; s<=L; s+=coarse){
-    const q = path.getPointAtLength(s);
-    const d = (q.x-p[0])**2 + (q.y-p[1])**2;
-    if(d < bestD){ bestD = d; best = s; }
-  }
-  // локальное уточнение вокруг найденного минимума
-  let fine = coarse;
-  for(let pass=0; pass<4; pass++){
-    fine /= 6;
-    for(let s=Math.max(0,best-fine*6); s<=Math.min(L,best+fine*6); s+=fine){
-      const q = path.getPointAtLength(s);
-      const d = (q.x-p[0])**2 + (q.y-p[1])**2;
-      if(d < bestD){ bestD = d; best = s; }
-    }
-  }
-  return best;
-}
-
-/* точка со смещением по нормали (для боковых иконок) */
-function normalPoint(path, len, off){
-  const L = path.getTotalLength();
+/* точка со смещением по нормали (для боковых иконок), считается по TRAIL-кэшу */
+function normalPoint(len, off){
+  const L = TRAIL.L;
   len = ((len % L) + L) % L;
-  const a = path.getPointAtLength(((len-1)%L+L)%L);
-  const b = path.getPointAtLength(((len+1)%L+L)%L);
+  const a = pointAtLength(len-1);
+  const b = pointAtLength(len+1);
   let nx = -(b.y-a.y), ny = (b.x-a.x);
   const m = Math.hypot(nx,ny)||1; nx/=m; ny/=m;
-  const p = path.getPointAtLength(len);
+  const p = pointAtLength(len);
   // наружу от центра
   if((p.x-CENTER.x)*nx + (p.y-CENTER.y)*ny < 0){ nx=-nx; ny=-ny; }
   return { x:p.x+nx*off, y:p.y+ny*off };
@@ -444,8 +450,6 @@ $('#sortChips').addEventListener('click', e=>{
   renderList();
 });
 
-/* ---------- hero мини-карта ---------- */
-$('#heroMiniMap').innerHTML = thumbSVG(ROUTES[1]);
 
 /* ---------- навигация: активный пункт ---------- */
 const navLinks = $$('.topnav a, .bottomnav a');
