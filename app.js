@@ -257,6 +257,17 @@ function drawRoute(route){
   line.setAttribute('opacity','0.95');
   layer.appendChild(line);
 
+  // маршрут «прорисовывается» от входа до конца, будто кто-то идёт по нему.
+  // requestAnimationFrame здесь ненадёжен (не срабатывает, если вкладка
+  // считается фоновой), поэтому вместо него принудительно вызываем reflow
+  // между двумя состояниями — это гарантированно запускает CSS-переход.
+  const lineLen = line.getTotalLength();
+  line.style.strokeDasharray = lineLen;
+  line.style.strokeDashoffset = lineLen;
+  line.getBoundingClientRect(); // форсируем reflow
+  line.style.transition = `stroke-dashoffset ${Math.min(1.6, 0.7+n*0.05)}s cubic-bezier(.65,0,.35,1)`;
+  line.style.strokeDashoffset = '0';
+
   const span = arcs[n-1] - arcs[0];
   const at = f => arcs[0] + f*span;
 
@@ -321,6 +332,7 @@ function drawRoute(route){
     const g = document.createElementNS(SVGNS,'g');
     g.setAttribute('class','rt-marker'+(confirmed?'':' rt-marker-est'));
     g.setAttribute('data-i', i);
+    g.style.animationDelay = (120 + i*28)+'ms'; // станции появляются по очереди вслед за линией
     g.innerHTML =
       `<circle class="bg" cx="${pt.x}" cy="${pt.y}" r="${R}" stroke="${route.color}" stroke-width="5"
          stroke-dasharray="${confirmed?'none':'5,4'}" fill-opacity="${confirmed?1:0.75}"></circle>
@@ -545,6 +557,25 @@ const io = new IntersectionObserver(entries=>{
   });
 },{rootMargin:'-45% 0px -50% 0px'});
 secs.forEach(id=>{ const el=document.getElementById(id); if(el) io.observe(el); });
+
+/* ---------- появление блоков при прокрутке ---------- */
+(function revealOnScroll(){
+  const items = $$('.reveal');
+  // соседние карточки (фичи в «О парке») подсвечиваются с небольшим каскадом
+  const groups = new Map();
+  items.forEach(el=>{
+    const parent = el.parentElement;
+    const idx = (groups.get(parent) || 0);
+    groups.set(parent, idx+1);
+    el.style.transitionDelay = Math.min(idx*90, 270)+'ms';
+  });
+  const ro = new IntersectionObserver((entries, obs)=>{
+    entries.forEach(en=>{
+      if(en.isIntersecting){ en.target.classList.add('is-in'); obs.unobserve(en.target); }
+    });
+  }, {threshold:0.12, rootMargin:'0px 0px -8% 0px'});
+  items.forEach(el=>ro.observe(el));
+})();
 
 /* ---------- старт ---------- */
 renderList();

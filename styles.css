@@ -137,7 +137,15 @@ img,svg{display:block;max-width:100%}
 @keyframes chipIn{ from{opacity:0;transform:translateY(10px) scale(.92)} to{opacity:1;transform:none} }
 @keyframes chipFloat{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
 @keyframes sunGlow{ 0%,100%{box-shadow:0 0 0 6px rgba(233,199,102,.3)} 50%{box-shadow:0 0 0 9px rgba(233,199,102,.45)} }
+/* ---------- появление блоков при прокрутке ---------- */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.19,1,.22,1), transform .7s cubic-bezier(.19,1,.22,1)}
+.reveal.is-in{opacity:1;transform:none}
+
+.feature{transition:transform .25s ease, box-shadow .25s ease}
+.feature:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+
 @media (prefers-reduced-motion: reduce){
+  .reveal{opacity:1;transform:none;transition:none}
   .hero-bg-img,.weather-chip,.sun{ animation:none; transition:none; }
 }
 
@@ -294,16 +302,22 @@ img,svg{display:block;max-width:100%}
 
 /* ---- маркеры маршрута (SVG) ---- */
 .rt-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
-.rt-spur{fill:none;stroke-width:6;stroke-linecap:round;stroke-dasharray:2,7;opacity:.85}
-.rt-marker{cursor:pointer}
-.rt-marker circle.bg{fill:#fff;stroke-width:3}
+.rt-spur{fill:none;stroke-width:6;stroke-linecap:round;stroke-dasharray:2,7;opacity:0;animation:spurIn .5s ease-out .9s both}
+.rt-marker{cursor:pointer;transform-box:fill-box;transform-origin:center;animation:markerPop .5s cubic-bezier(.2,1.4,.4,1) both}
+.rt-marker circle.bg{fill:#fff;stroke-width:3;transition:r .15s ease}
 .rt-marker text{font-family:var(--sans);font-weight:700;font-size:19px;fill:#2c2c29;text-anchor:middle;dominant-baseline:central;pointer-events:none}
-.rt-icon{cursor:default}
+.rt-icon{cursor:default;opacity:0;animation:markerPop .5s cubic-bezier(.2,1.4,.4,1) 1.1s both}
 .rt-icon circle{fill:var(--coral)}
 .rt-icon.pulse circle{fill:var(--teal)}
+.rt-here{opacity:0;animation:markerPop .5s cubic-bezier(.2,1.4,.4,1) 1.3s both}
 .rt-here .pulsecore{fill:#2f7bd6}
-.rt-here .pulsering{fill:#2f7bd6;opacity:.28;animation:pulsering 1.8s ease-out infinite}
+.rt-here .pulsering{fill:#2f7bd6;opacity:.28;animation:pulsering 1.8s ease-out 1.3s infinite}
 @keyframes pulsering{0%{transform:scale(1);opacity:.4}100%{transform:scale(2.6);opacity:0}}
+@keyframes markerPop{from{opacity:0;transform:scale(.35)}to{opacity:1;transform:scale(1)}}
+@keyframes spurIn{from{opacity:0}to{opacity:.85}}
+@media (prefers-reduced-motion: reduce){
+  .rt-marker,.rt-icon,.rt-here,.rt-spur{animation:none;opacity:1}
+}
 
 /* ---- POI popup ---- */
 .poi-popup{
