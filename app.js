@@ -439,7 +439,9 @@ function highlightStationRow(i,on){
 }
 
 /* ---------- POI popup ---------- */
+let popupRoute = null, popupIndex = 0;
 function openPOI(route, i, scroll){
+  popupRoute = route; popupIndex = i;
   const p = POI[route.pois[i]];
   $('#poiBadge').textContent = p.cat;
   $('#poiStation').textContent = `Станция ${i+1} из ${route.pois.length}`;
@@ -450,6 +452,8 @@ function openPOI(route, i, scroll){
   const estEl = $('#poiEstimate');
   estEl.hidden = !!p.at;
   $('#poiPopup').hidden = false;
+  $('#poiPrev').disabled = i===0;
+  $('#poiNext').disabled = i===route.pois.length-1;
   // подсветка выбранной точки
   $$('#routeLayer .rt-marker circle.bg').forEach(c=>c.setAttribute('r','30'));
   highlightMarker(i,true);
@@ -457,6 +461,8 @@ function openPOI(route, i, scroll){
   if(sliderRoute===route){ sliderIndex=i; updateSlider(); }
 }
 $('#poiClose').addEventListener('click', ()=>{ $('#poiPopup').hidden = true; });
+$('#poiPrev').addEventListener('click', ()=>{ if(popupRoute && popupIndex>0) openPOI(popupRoute, popupIndex-1, false); });
+$('#poiNext').addEventListener('click', ()=>{ if(popupRoute && popupIndex<popupRoute.pois.length-1) openPOI(popupRoute, popupIndex+1, false); });
 
 /* ---------- выбор маршрута ---------- */
 function selectRoute(id){
