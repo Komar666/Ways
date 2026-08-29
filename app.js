@@ -248,8 +248,9 @@ function drawRoute(route){
   // дорожек (не общий контур парка целиком, а только те его куски, которые
   // реально пройдены в этой последовательности — включая повторные проходы,
   // если маршрут возвращается через уже пройденное место)
+  const seqPts = sequencePoints(arcs);
   const line = document.createElementNS(SVGNS,'path');
-  line.setAttribute('d', buildSequenceLine(arcs));
+  line.setAttribute('d', buildSequenceLine(seqPts));
   line.setAttribute('class','rt-line');
   line.setAttribute('stroke', route.color);
   line.setAttribute('stroke-width','13');
@@ -337,12 +338,14 @@ function drawRoute(route){
   hg.innerHTML = `<circle class="pulsering" cx="${here.x}" cy="${here.y}" r="20" style="transform-origin:${here.x}px ${here.y}px"/>
                   <circle class="pulsecore" cx="${here.x}" cy="${here.y}" r="13" stroke="#fff" stroke-width="4"/>`;
   layer.appendChild(hg);
+
+  // зум карты — под этот конкретный маршрут (линия + все маркеры, включая ответвления)
+  fitMapView(seqPts.concat(placed));
 }
 
-/* Строит путь, который проходит РЕАЛЬНЫЕ дорожки между станциями строго по
-   порядку 1→2→3→...→N (а не общий контур парка целиком) — берём отрезки
-   трека между соседними станциями, сэмплируя его через каждые ~40px. */
-function buildSequenceLine(arcs){
+/* Точки видимой линии маршрута: идём по треку от станции к станции строго
+   по порядку 1→2→3→...→N, сэмплируя опорную кривую через каждые ~40px. */
+function sequencePoints(arcs){
   const pts = [];
   for(let i=0;i<arcs.length-1;i++){
     const a = arcs[i], b = arcs[i+1];
@@ -351,9 +354,27 @@ function buildSequenceLine(arcs){
     for(let s=0;s<steps;s++) pts.push(pointAtLength(a + dist*(s/steps)));
   }
   pts.push(pointAtLength(arcs[arcs.length-1]));
+  return pts;
+}
+function buildSequenceLine(pts){
   let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
   for(let k=1;k<pts.length;k++) d += ` L${pts[k].x.toFixed(1)},${pts[k].y.toFixed(1)}`;
   return d;
+}
+
+/* Подгоняет видимую область карты под КОНКРЕТНЫЙ выбранный маршрут (не под
+   весь парк целиком) — иначе у коротких маршрутов станции жмутся к одному
+   краю, а вокруг остаётся пустое место. */
+function fitMapView(points){
+  const PAD_FRAC = 0.20, MIN_SPAN = 340;
+  let x0=Infinity, x1=-Infinity, y0=Infinity, y1=-Infinity;
+  points.forEach(p=>{ if(p.x<x0)x0=p.x; if(p.x>x1)x1=p.x; if(p.y<y0)y0=p.y; if(p.y>y1)y1=p.y; });
+  let w = x1-x0, h = y1-y0;
+  if(w < MIN_SPAN){ const cx=(x0+x1)/2; x0=cx-MIN_SPAN/2; x1=cx+MIN_SPAN/2; w=MIN_SPAN; }
+  if(h < MIN_SPAN){ const cy=(y0+y1)/2; y0=cy-MIN_SPAN/2; y1=cy+MIN_SPAN/2; h=MIN_SPAN; }
+  const padX = w*PAD_FRAC, padY = h*PAD_FRAC;
+  x0 -= padX; y0 -= padY; w += padX*2; h += padY*2;
+  $('#parkMap').setAttribute('viewBox', `${x0.toFixed(0)} ${y0.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}`);
 }
 
 /* Позиции станций вдоль трека: станции с известной реальной координатой (POI.at)
@@ -524,17 +545,6 @@ const io = new IntersectionObserver(entries=>{
   });
 },{rootMargin:'-45% 0px -50% 0px'});
 secs.forEach(id=>{ const el=document.getElementById(id); if(el) io.observe(el); });
-
-/* ---------- фокус карты на зоне маршрутов ---------- */
-(function focusMap(){
-  const xs = PLANMAP.loop.map(p=>p[0]), ys = PLANMAP.loop.map(p=>p[1]);
-  const padX = (Math.max(...xs)-Math.min(...xs))*0.14;
-  const padY = (Math.max(...ys)-Math.min(...ys))*0.12;
-  const x0 = Math.min(...xs)-padX, y0 = Math.min(...ys)-padY;
-  const w = (Math.max(...xs)-Math.min(...xs))+padX*2;
-  const h = (Math.max(...ys)-Math.min(...ys))+padY*2;
-  $('#parkMap').setAttribute('viewBox', `${x0.toFixed(0)} ${y0.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}`);
-})();
 
 /* ---------- старт ---------- */
 renderList();
