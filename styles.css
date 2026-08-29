@@ -227,7 +227,7 @@ img,svg{display:block;max-width:100%}
 .st-cat{font-size:12px;color:var(--ink-soft);background:#efe7d6;padding:4px 10px;border-radius:999px;white-space:nowrap}
 
 /* ---- мини-слайдер станций (только мобильный) ---- */
-.station-slider{display:none}
+.station-slider{display:none;max-width:1240px;margin:0 auto;padding:0 clamp(18px,4vw,54px)}
 @media (max-width:900px){
   .station-slider{display:block;margin-top:16px}
 }
