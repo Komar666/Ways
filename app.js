@@ -478,3 +478,19 @@ secs.forEach(id=>{ const el=document.getElementById(id); if(el) io.observe(el); 
 /* ---------- старт ---------- */
 renderList();
 selectRoute('t2');   // маршрут по умолчанию — «Вода и история»
+
+/* ---------- лёгкий параллакс фото в hero по движению мыши ---------- */
+(function heroParallax(){
+  const hero = $('.hero'), img = $('.hero-bg-img');
+  if(!hero || !img || window.matchMedia('(pointer:coarse)').matches) return;
+  const MAX_X = 22, MAX_Y = 14; // px — амплитуда сдвига, лёгкая, не навязчивая
+  hero.addEventListener('mousemove', e=>{
+    const r = hero.getBoundingClientRect();
+    const px = (e.clientX - r.left)/r.width - 0.5;
+    const py = (e.clientY - r.top)/r.height - 0.5;
+    img.style.transform = `scale(1.09) translate3d(${(-px*MAX_X).toFixed(1)}px, ${(-py*MAX_Y).toFixed(1)}px, 0)`;
+  });
+  hero.addEventListener('mouseleave', ()=>{
+    img.style.transform = 'scale(1.09) translate3d(0,0,0)';
+  });
+})();
