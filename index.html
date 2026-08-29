@@ -143,6 +143,29 @@
       </div>
     </div>
   </div>
+
+  <!-- мобильный мини-слайдер станций: показывается только на узких экранах,
+       вместо длинного списка станций под картой -->
+  <div class="station-slider" id="stationSlider" hidden>
+    <div class="ss-head">
+      <h5>Станции маршрута</h5>
+      <div class="ss-count" id="ssCount">1 / 12</div>
+    </div>
+    <div class="ss-card" id="ssCard">
+      <button class="ss-arrow ss-prev" id="ssPrev" aria-label="Предыдущая станция">‹</button>
+      <div class="ss-body" id="ssBody">
+        <div class="ss-num" id="ssNum">1</div>
+        <div class="ss-text">
+          <div class="ss-cat" id="ssCat">История</div>
+          <div class="ss-name" id="ssName">—</div>
+          <div class="ss-sub" id="ssSub">—</div>
+          <p class="ss-desc" id="ssDesc">—</p>
+        </div>
+      </div>
+      <button class="ss-arrow ss-next" id="ssNext" aria-label="Следующая станция">›</button>
+    </div>
+    <div class="ss-dots" id="ssDots"></div>
+  </div>
 </section>
 
 <!-- ===================== О парке ===================== -->

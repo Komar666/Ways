@@ -180,6 +180,57 @@ function renderDetail(route){
   });
 }
 
+/* ---------- мобильный мини-слайдер станций ---------- */
+/* На узких экранах длинный список станций заменяется компактным слайдером:
+   одна станция за раз — крупный номер, название, описание, стрелки/точки/свайп.
+   На десктопе элемент скрыт CSS-медиазапросом, но данные считаются всегда. */
+let sliderRoute = null, sliderIndex = 0;
+function renderStationSlider(route){
+  sliderRoute = route;
+  sliderIndex = 0;
+  $('#stationSlider').hidden = false;
+  $('#ssDots').innerHTML = route.pois.map((_,i)=>`<i data-i="${i}"></i>`).join('');
+  updateSlider();
+}
+function updateSlider(){
+  if(!sliderRoute) return;
+  const route = sliderRoute, i = sliderIndex;
+  const p = POI[route.pois[i]];
+  $('#ssCount').textContent = `${i+1} / ${route.pois.length}`;
+  $('#ssNum').textContent = i+1;
+  $('#ssNum').style.background = route.color;
+  $('#ssCat').textContent = p.cat;
+  $('#ssName').textContent = p.name;
+  $('#ssSub').textContent = p.sub || '';
+  $('#ssSub').style.display = p.sub ? '' : 'none';
+  $('#ssDesc').textContent = p.desc;
+  $$('#ssDots i').forEach((dot,k)=>dot.classList.toggle('is-on', k===i));
+  $('#ssPrev').disabled = i===0;
+  $('#ssNext').disabled = i===route.pois.length-1;
+  $$('#routeLayer .rt-marker').forEach(g=>highlightMarker(+g.dataset.i, +g.dataset.i===i));
+}
+function sliderStep(delta){
+  if(!sliderRoute) return;
+  sliderIndex = Math.max(0, Math.min(sliderRoute.pois.length-1, sliderIndex+delta));
+  updateSlider();
+}
+$('#ssPrev').addEventListener('click', ()=>sliderStep(-1));
+$('#ssNext').addEventListener('click', ()=>sliderStep(1));
+$('#ssDots').addEventListener('click', e=>{
+  const dot = e.target.closest('i'); if(!dot) return;
+  sliderIndex = +dot.dataset.i; updateSlider();
+});
+(function initSliderSwipe(){
+  const card = $('#ssCard');
+  let startX = 0, dx = 0, dragging = false;
+  card.addEventListener('touchstart', e=>{ startX = e.touches[0].clientX; dragging = true; dx = 0; }, {passive:true});
+  card.addEventListener('touchmove', e=>{ if(dragging) dx = e.touches[0].clientX - startX; }, {passive:true});
+  card.addEventListener('touchend', ()=>{
+    if(dragging && Math.abs(dx) > 40) sliderStep(dx < 0 ? 1 : -1);
+    dragging = false; dx = 0;
+  });
+})();
+
 /* ---------- рисуем маршрут на карте ---------- */
 function drawRoute(route){
   const layer = $('#routeLayer');
@@ -402,6 +453,8 @@ function openPOI(route, i, scroll){
   // подсветка выбранной точки
   $$('#routeLayer .rt-marker circle.bg').forEach(c=>c.setAttribute('r','30'));
   highlightMarker(i,true);
+  // синхронизируем мобильный слайдер станций, если открыт этот же маршрут
+  if(sliderRoute===route){ sliderIndex=i; updateSlider(); }
 }
 $('#poiClose').addEventListener('click', ()=>{ $('#poiPopup').hidden = true; });
 
@@ -412,6 +465,7 @@ function selectRoute(id){
   renderList();
   renderDetail(route);
   drawRoute(route);
+  renderStationSlider(route);
   $('#poiPopup').hidden = true;
   $('#mapEmpty').style.display = 'none';
   $('#mapTitle').textContent = route.name;
