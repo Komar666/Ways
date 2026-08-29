@@ -100,11 +100,12 @@ function thumbSVG(route){
 /* ---------- карточки маршрутов ---------- */
 function renderList(){
   let list = ROUTES.filter(r => state.filter==='all' || r.tags.includes(state.filter));
+  const loadRank = { 'Лёгкая':0, 'Умеренная':1, 'Средняя':2 };
   const sorters = {
     n:(a,b)=>a.n-b.n,
     time:(a,b)=>a.durationMin-b.durationMin,
     dist:(a,b)=>a.distanceKm-b.distanceKm,
-    load:(a,b)=>a.n-b.n,
+    load:(a,b)=>loadRank[a.level]-loadRank[b.level],
   };
   list.sort(sorters[state.sort]);
 
